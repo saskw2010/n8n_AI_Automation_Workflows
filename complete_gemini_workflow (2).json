@@ -1,0 +1,705 @@
+{
+  "name": "Simple Google Gemini Vision Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Counter Node - manages loop numbers\nconst inputData = $input.all();\nlet currentNumber = 1;\n\nif (inputData.length > 0 && inputData[0].json.number) {\n  currentNumber = inputData[0].json.number;\n}\n\nconsole.log(`Processing PDF number: ${currentNumber}`);\n\nreturn [{\n  json: {\n    number: currentNumber\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        280
+      ],
+      "id": "counter-node",
+      "name": "Counter Node"
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=AIzaSyCqJBp6RPBpM_S8n-sd0GacL7PRM0ZAJCA",
+        "options": {
+          "bodyContentType": "json"
+        },
+        "jsonParameters": true,
+        "body": "={\n  \"contents\": [{\n    \"parts\": [\n      {\n        \"text\": \"Extract the following fields from this Arabic PDF document and return them in a flat JSON object. Do not include any nested arrays or objects. Join multiple values using ' | ' for inner values and ';' for separating entries. Ensure all fields appear in the output, even if their values are empty. All values must be strings or numbers only.\\n\\nFields to extract:\\n\\nالصفحة\\nالدولة\\nالمحافظة\\nنوع_الترخيص\\nرقم_الترخيص_الصحي\\nتاريخ_تجديد_الترخيص_الصحي\\nتاريخ_انتهاء_الترخيص_الصحي\\nتاريخ_الإصدار_الأول_للترخيص_الصحي\\nاسم_صاحب_الترخيص\\nالرقم_المدني_لصاحب_الترخيص\\nجنسية_صاحب_الترخيص\\nالممثل_القانوني\\nالرقم_المدني_للممثل_القانوني\\nجنسية_الممثل_القانوني\\nالاسم_التجاري\\nرقم_الترخيص_التجاري\\nتاريخ_إصدار_الترخيص_التجاري\\nتاريخ_انتهاء_الترخيص_التجاري\\nالنشاط_التجاري\\nالمنطقة\\nالقطعة\\nالشارع\\nالمبنى\\nالطابق\\nالوحدة\\nالرقم_الآلي_للعقار\\nنوع_العقار\\nمالك_العقار\\nالمساحة_م2\\nالرسوم_دك\\nاسم_المفتش\\nحالة_تحصيل_الرسوم\\nملاحظات\\nرقم_الملف\\njsonnumber\\n\\nIMPORTANT: For the jsonnumber field, use this exact value: {{ $('Counter Node').item.json.number }}\\n\\nReturn ONLY the JSON object. It must start with '{' and end with '}'. Do not include any explanation, notes, or extra text.\"\n      },\n      {\n        \"fileData\": {\n          \"mimeType\": \"application/pdf\",\n          \"fileUri\": \"=http://cr.skyaierp.com/1-{{$json.number}}.pdf\"\n        }\n      }\n    ]\n  }],\n  \"generationConfig\": {\n    \"temperature\": 0.1,\n    \"topK\": 32,\n    \"topP\": 1,\n    \"maxOutputTokens\": 4096\n  }\n}"
+      },
+      "name": "Google Gemini Vision",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -340,
+        280
+      ],
+      "id": "gemini-vision"
+    },
+    {
+      "parameters": {
+        "amount": 3,
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -140,
+        280
+      ],
+      "id": "wait-node",
+      "name": "Wait 3 Seconds"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Extract the following fields from the provided text and return them in a flat JSON object. Do not include any nested arrays or objects. Join multiple values using \" | \" for inner values and \";\" for separating entries. Ensure all fields appear in the output, even if their values are empty. All values must be strings or numbers only.\\n\\nFields to extract:\\n\\nالصفحة\\nالدولة\\nالمحافظة\\nنوع_الترخيص\\nرقم_الترخيص_الصحي\\nتاريخ_تجديد_الترخيص_الصحي\\nتاريخ_انتهاء_الترخيص_الصحي\\nتاريخ_الإصدار_الأول_للترخيص_الصحي\\nاسم_صاحب_الترخيص\\nالرقم_المدني_لصاحب_الترخيص\\nجنسية_صاحب_الترخيص\\nالممثل_القانوني\\nالرقم_المدني_للممثل_القانوني\\nجنسية_الممثل_القانوني\\nالاسم_التجاري\\nرقم_الترخيص_التجاري\\nتاريخ_إصدار_الترخيص_التجاري\\nتاريخ_انتهاء_الترخيص_التجاري\\nالنشاط_التجاري\\nالمنطقة\\nالقطعة\\nالشارع\\nالمبنى\\nالطابق\\nالوحدة\\nالرقم_الآلي_للعقار\\nنوع_العقار\\nمالك_العقار\\nالمساحة_م2\\nالرسوم_دك\\nاسم_المفتش\\nحالة_تحصيل_الرسوم\\nملاحظات\\nرقم_الملف\\njsonnumber\\n\\nIMPORTANT: For the jsonnumber field, use this exact value: {{ $('Counter Node').item.json.number }}\\n\\nReturn ONLY the JSON object. It must start with \\\"{\\\" and end with \\\"}\\\". Do not include any explanation, notes, or extra text.\\n\\nInput text from Gemini:\\n{{ $json.candidates[0].content.parts[0].text }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [
+        60,
+        280
+      ],
+      "id": "ai-agent",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-3-7-sonnet-20250219",
+          "cachedResultName": "Claude 3.7 Sonnet"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        80,
+        120
+      ],
+      "id": "claude-model",
+      "name": "Claude Model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "m7HdyqS94kNsRniJ",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process AI Agent output to clean JSON\nlet outputStr = $input.first().json.output;\n\n// Extract JSON from AI response\nlet jsonMatch = outputStr.match(/({[\\s\\S]*})/);\n\nif (!jsonMatch) {\n  throw new Error(\"No valid JSON found in AI output!\");\n}\n\nlet data = JSON.parse(jsonMatch[1]);\n\n// Ensure jsonnumber is set\nif (!data.jsonnumber) {\n  data.jsonnumber = $('Counter Node').first().json.number;\n}\n\nconsole.log(`Final data for PDF ${data.jsonnumber}:`, JSON.stringify(data, null, 2));\n\nreturn [{ json: data }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        280
+      ],
+      "id": "process-json",
+      "name": "Process JSON"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1YGRZ2vZBQKggEVJxHxgUWulj56UUbkOmhI66FA7k0lo",
+          "mode": "list",
+          "cachedResultName": "extractdata",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YGRZ2vZBQKggEVJxHxgUWulj56UUbkOmhI66FA7k0lo/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1348648184,
+          "mode": "list",
+          "cachedResultName": "Sheet2",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YGRZ2vZBQKggEVJxHxgUWulj56UUbkOmhI66FA7k0lo/edit#gid=1348648184"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "jsonnumber": "={{ $json.jsonnumber }}",
+            "الصفحة": "={{ $json.الصفحة }}",
+            "الدولة": "={{ $json.الدولة }}",
+            "المحافظة": "={{ $json.المحافظة }}",
+            "نوع_الترخيص": "={{ $json.نوع_الترخيص }}",
+            "رقم_الترخيص_الصحي": "={{ $json.رقم_الترخيص_الصحي }}",
+            "تاريخ_تجديد_الترخيص_الصحي": "={{ $json.تاريخ_تجديد_الترخيص_الصحي }}",
+            "تاريخ_انتهاء_الترخيص_الصحي": "={{ $json.تاريخ_انتهاء_الترخيص_الصحي }}",
+            "تاريخ_الإصدار_الأول_للترخيص_الصحي": "={{ $json.تاريخ_الإصدار_الأول_للترخيص_الصحي }}",
+            "اسم_صاحب_الترخيص": "={{ $json.اسم_صاحب_الترخيص }}",
+            "الرقم_المدني_لصاحب_الترخيص": "={{ $json.الرقم_المدني_لصاحب_الترخيص }}",
+            "جنسية_صاحب_الترخيص": "={{ $json.جنسية_صاحب_الترخيص }}",
+            "الممثل_القانوني": "={{ $json.الممثل_القانوني }}",
+            "الرقم_المدني_للممثل_القانوني": "={{ $json.الرقم_المدني_للممثل_القانوني }}",
+            "جنسية_الممثل_القانوني": "={{ $json.جنسية_الممثل_القانوني }}",
+            "الاسم_التجاري": "={{ $json.الاسم_التجاري }}",
+            "رقم_الترخيص_التجاري": "={{ $json.رقم_الترخيص_التجاري }}",
+            "تاريخ_إصدار_الترخيص_التجاري": "={{ $json.تاريخ_إصدار_الترخيص_التجاري }}",
+            "تاريخ_انتهاء_الترخيص_التجاري": "={{ $json.تاريخ_انتهاء_الترخيص_التجاري }}",
+            "النشاط_التجاري": "={{ $json.النشاط_التجاري }}",
+            "المنطقة": "={{ $json.المنطقة }}",
+            "القطعة": "={{ $json.القطعة }}",
+            "الشارع": "={{ $json.الشارع }}",
+            "المبنى": "={{ $json.المبنى }}",
+            "الطابق": "={{ $json.الطابق }}",
+            "الوحدة": "={{ $json.الوحدة }}",
+            "الرقم_الآلي_للعقار": "={{ $json.الرقم_الآلي_للعقار }}",
+            "نوع_العقار": "={{ $json.نوع_العقار }}",
+            "مالك_العقار": "={{ $json.مالك_العقار }}",
+            "المساحة_م2": "={{ $json.المساحة_م2 }}",
+            "الرسوم_دك": "={{ $json.الرسوم_دك }}",
+            "اسم_المفتش": "={{ $json.اسم_المفتش }}",
+            "حالة_تحصيل_الرسوم": "={{ $json.حالة_تحصيل_الرسوم }}",
+            "ملاحظات": "={{ $json.ملاحظات }}",
+            "رقم_الملف": "={{ $json.رقم_الملف }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "jsonnumber",
+              "displayName": "jsonnumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الصفحة",
+              "displayName": "الصفحة",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الدولة",
+              "displayName": "الدولة",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "المحافظة",
+              "displayName": "المحافظة",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "نوع_الترخيص",
+              "displayName": "نوع_الترخيص",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "رقم_الترخيص_الصحي",
+              "displayName": "رقم_الترخيص_الصحي",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "تاريخ_تجديد_الترخيص_الصحي",
+              "displayName": "تاريخ_تجديد_الترخيص_الصحي",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "تاريخ_انتهاء_الترخيص_الصحي",
+              "displayName": "تاريخ_انتهاء_الترخيص_الصحي",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "تاريخ_الإصدار_الأول_للترخيص_الصحي",
+              "displayName": "تاريخ_الإصدار_الأول_للترخيص_الصحي",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "اسم_صاحب_الترخيص",
+              "displayName": "اسم_صاحب_الترخيص",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الرقم_المدني_لصاحب_الترخيص",
+              "displayName": "الرقم_المدني_لصاحب_الترخيص",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "جنسية_صاحب_الترخيص",
+              "displayName": "جنسية_صاحب_الترخيص",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الممثل_القانوني",
+              "displayName": "الممثل_القانوني",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الرقم_المدني_للممثل_القانوني",
+              "displayName": "الرقم_المدني_للممثل_القانوني",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "جنسية_الممثل_القانوني",
+              "displayName": "جنسية_الممثل_القانوني",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الاسم_التجاري",
+              "displayName": "الاسم_التجاري",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "رقم_الترخيص_التجاري",
+              "displayName": "رقم_الترخيص_التجاري",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "تاريخ_إصدار_الترخيص_التجاري",
+              "displayName": "تاريخ_إصدار_الترخيص_التجاري",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "تاريخ_انتهاء_الترخيص_التجاري",
+              "displayName": "تاريخ_انتهاء_الترخيص_التجاري",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "النشاط_التجاري",
+              "displayName": "النشاط_التجاري",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "المنطقة",
+              "displayName": "المنطقة",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "القطعة",
+              "displayName": "القطعة",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الشارع",
+              "displayName": "الشارع",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "المبنى",
+              "displayName": "المبنى",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الطابق",
+              "displayName": "الطابق",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الوحدة",
+              "displayName": "الوحدة",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الرقم_الآلي_للعقار",
+              "displayName": "الرقم_الآلي_للعقار",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "نوع_العقار",
+              "displayName": "نوع_العقار",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "مالك_العقار",
+              "displayName": "مالك_العقار",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "المساحة_م2",
+              "displayName": "المساحة_م2",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الرسوم_دك",
+              "displayName": "الرسوم_دك",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "اسم_المفتش",
+              "displayName": "اسم_المفتش",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "حالة_تحصيل_الرسوم",
+              "displayName": "حالة_تحصيل_الرسوم",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ملاحظات",
+              "displayName": "ملاحظات",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "رقم_الملف",
+              "displayName": "رقم_الملف",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "useAppend": false
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        500,
+        280
+      ],
+      "id": "google-sheets",
+      "name": "Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ZhKYwN0Ynm2Z5KYd",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop Check - manages the counter\nlet current = $('Counter Node').first().json.number;\n\nconsole.log(`Finished processing PDF number: ${current}`);\n\n// Change 50 to your desired end number\nif (current >= 50) {\n  console.log('All PDFs processed!');\n  return [{\n    json: {\n      finished: true,\n      message: `Completed processing PDFs 1-${current}`,\n      totalProcessed: current\n    }\n  }];\n}\n\n// Continue with next number\nlet next = current + 1;\nconsole.log(`Next PDF to process: ${next}`);\n\nreturn [{\n  json: {\n    number: next,\n    continue: true,\n    currentlyProcessed: current\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        280
+      ],
+      "id": "loop-check",
+      "name": "Loop Check"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "continue-condition",
+              "leftValue": "={{ $json.continue }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        940,
+        280
+      ],
+      "id": "should-continue",
+      "name": "Should Continue?"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -780,
+        280
+      ],
+      "id": "manual-trigger",
+      "name": "Start Workflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop Back - feeds the next number back to Counter Node\nlet nextNumber = $('Loop Check').first().json.number;\n\nconsole.log(`Looping back with number: ${nextNumber}`);\n\nreturn [{\n  json: {\n    number: nextNumber\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        440
+      ],
+      "id": "loop-back",
+      "name": "Loop Back"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Counter Node": {
+      "main": [
+        [
+          {
+            "node": "Google Gemini Vision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Vision": {
+      "main": [
+        [
+          {
+            "node": "Wait 3 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3 Seconds": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Process JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process JSON": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Loop Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Check": {
+      "main": [
+        [
+          {
+            "node": "Should Continue?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Continue?": {
+      "main": [
+        [
+          {
+            "node": "Loop Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Workflow": {
+      "main": [
+        [
+          {
+            "node": "Counter Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Back": {
+      "main": [
+        [
+          {
+            "node": "Counter Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "simple-workflow-v1",
+  "meta": {
+    "instanceId": "simple-gemini-workflow"
+  },
+  "id": "simple-gemini-workflow-complete",
+  "tags": []
+}
+            "
