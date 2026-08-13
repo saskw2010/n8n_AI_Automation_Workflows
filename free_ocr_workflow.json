@@ -1,0 +1,336 @@
+{
+  "name": "Free Google Vision OCR Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const inputData = $input.all();\nlet currentNumber = 1;\n\nif (inputData.length > 0 && inputData[0].json.number) {\n  currentNumber = inputData[0].json.number;\n}\n\nconsole.log(`Processing PDF number: ${currentNumber}`);\n\nreturn [{\n  json: {\n    number: currentNumber\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [560, 280],
+      "id": "counter-node",
+      "name": "Counter Node"
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "https://vision.googleapis.com/v1/images:annotate?key=AIzaSyCqJBp6RPBpM_S8n-sd0GacL7PRM0ZAJCA",
+        "options": {
+          "bodyContentType": "json"
+        },
+        "jsonParameters": true,
+        "body": "={\n  \"requests\": [{\n    \"image\": {\n      \"source\": {\n        \"imageUri\": \"http://cr.skyaierp.com/1-{{$json.number}}.pdf\"\n      }\n    },\n    \"features\": [{\n      \"type\": \"DOCUMENT_TEXT_DETECTION\",\n      \"maxResults\": 50\n    }],\n    \"imageContext\": {\n      \"languageHints\": [\"ar\", \"en\"]\n    }\n  }]\n}"
+      },
+      "name": "Google Vision OCR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [780, 280],
+      "id": "google-vision-ocr"
+    },
+    {
+      "parameters": {
+        "amount": 3,
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1000, 280],
+      "id": "wait-node",
+      "name": "Wait 3 Seconds"
+    },
+    {
+      "parameters": {
+        "jsCode": "const visionResult = $input.first().json;\n\n// استخراج النص من Google Vision API\nlet extractedText = '';\n\nif (visionResult.responses && visionResult.responses[0] && visionResult.responses[0].fullTextAnnotation) {\n  extractedText = visionResult.responses[0].fullTextAnnotation.text || '';\n} else if (visionResult.responses && visionResult.responses[0] && visionResult.responses[0].textAnnotations) {\n  // استخدام textAnnotations كبديل\n  extractedText = visionResult.responses[0].textAnnotations[0]?.description || '';\n} else {\n  return {\n    json: {\n      error: true,\n      message: 'No text detected by Google Vision',\n      response: visionResult\n    }\n  };\n}\n\n// تنظيف النص\nconst cleanedText = extractedText\n  .replace(/\\r\\n/g, '\\n')\n  .replace(/[ \\t]{2,}/g, ' ')\n  .replace(/\\n\\s*\\n/g, '\\n\\n')\n  .trim();\n\n// تقسيم النص إلى أجزاء\nconst chunkSize = 4000;\nconst chunks = [];\n\nfor (let i = 0; i < cleanedText.length; i += chunkSize) {\n  chunks.push(cleanedText.slice(i, i + chunkSize));\n}\n\nconsole.log('Extracted text length:', extractedText.length);\nconsole.log('Text preview:', extractedText.substring(0, 200));\n\nreturn {\n  json: {\n    originalText: extractedText,\n    cleanedText: cleanedText,\n    textChunks: chunks,\n    success: true\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1220, 280],
+      "id": "process-vision-text",
+      "name": "Process Vision Text"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Extract the following fields from the provided Arabic text and return them in a flat JSON object. Do not include any nested arrays or objects. Join multiple values using \" | \" for inner values and \";\" for separating entries. Ensure all fields appear in the output, even if their values are empty. All values must be strings or numbers only.\\n\\nFields to extract:\\n\\nالصفحة\\nالدولة\\nالمحافظة\\nنوع_الترخيص\\nرقم_الترخيص_الصحي\\nتاريخ_تجديد_الترخيص_الصحي\\nتاريخ_انتهاء_الترخيص_الصحي\\nتاريخ_الإصدار_الأول_للترخيص_الصحي\\nاسم_صاحب_الترخيص\\nالرقم_المدني_لصاحب_الترخيص\\nجنسية_صاحب_الترخيص\\nالممثل_القانوني\\nالرقم_المدني_للممثل_القانوني\\nجنسية_الممثل_القانوني\\nالاسم_التجاري\\nرقم_الترخيص_التجاري\\nتاريخ_إصدار_الترخيص_التجاري\\nتاريخ_انتهاء_الترخيص_التجاري\\nالنشاط_التجاري\\nالمنطقة\\nالقطعة\\nالشارع\\nالمبنى\\nالطابق\\nالوحدة\\nالرقم_الآلي_للعقار\\nنوع_العقار\\nمالك_العقار\\nالمساحة_م2\\nالرسوم_دك\\nاسم_المفتش\\nحالة_تحصيل_الرسوم\\nملاحظات\\nرقم_الملف\\njsonnumber\\n\\nIMPORTANT: For the jsonnumber field, use this exact value: {{ $('Counter Node').item.json.number }}\\n\\nReturn ONLY the JSON object. It must start with \\\"{\\\" and end with \\\"}\\\". Do not include any explanation, notes, or extra text.\\n\\nInput text:\\n{{ $json.textChunks }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [1440, 280],
+      "id": "ai-agent",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-3-7-sonnet-20250219",
+          "cachedResultName": "Claude 3.7 Sonnet"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [1460, 120],
+      "id": "claude-model",
+      "name": "Claude Model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "m7HdyqS94kNsRniJ",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "let outputStr = $input.first().json.output;\n\nlet jsonMatch = outputStr.match(/({[\\s\\S]*})/);\n\nif (!jsonMatch) {\n  throw new Error(\"No valid JSON found in AI output!\");\n}\n\nlet data = JSON.parse(jsonMatch[1]);\n\nif (!data.jsonnumber) {\n  data.jsonnumber = $('Counter Node').first().json.number;\n}\n\nconsole.log(`Final data for PDF ${data.jsonnumber}:`, JSON.stringify(data, null, 2));\n\nreturn [{ json: data }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1660, 280],
+      "id": "process-json",
+      "name": "Process JSON"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1YGRZ2vZBQKggEVJxHxgUWulj56UUbkOmhI66FA7k0lo",
+          "mode": "list",
+          "cachedResultName": "extractdata",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YGRZ2vZBQKggEVJxHxgUWulj56UUbkOmhI66FA7k0lo/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1348648184,
+          "mode": "list",
+          "cachedResultName": "Sheet2",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YGRZ2vZBQKggEVJxHxgUWulj56UUbkOmhI66FA7k0lo/edit#gid=1348648184"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1880, 280],
+      "id": "google-sheets",
+      "name": "Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ZhKYwN0Ynm2Z5KYd",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "let current = $('Counter Node').first().json.number;\n\nconsole.log(`Finished processing PDF number: ${current}`);\n\nif (current >= 50) {\n  console.log('All PDFs processed!');\n  return [{\n    json: {\n      finished: true,\n      message: `Completed processing PDFs 1-${current}`,\n      totalProcessed: current\n    }\n  }];\n}\n\nlet next = current + 1;\nconsole.log(`Next PDF to process: ${next}`);\n\nreturn [{\n  json: {\n    number: next,\n    continue: true,\n    currentlyProcessed: current\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2100, 280],
+      "id": "loop-check",
+      "name": "Loop Check"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "continue-condition",
+              "leftValue": "={{ $json.continue }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2320, 280],
+      "id": "should-continue",
+      "name": "Should Continue?"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [340, 280],
+      "id": "manual-trigger",
+      "name": "Start Workflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "let nextNumber = $('Loop Check').first().json.number;\n\nconsole.log(`Looping back with number: ${nextNumber}`);\n\nreturn [{\n  json: {\n    number: nextNumber\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [560, 440],
+      "id": "loop-back",
+      "name": "Loop Back"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Counter Node": {
+      "main": [
+        [
+          {
+            "node": "Google Vision OCR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Vision OCR": {
+      "main": [
+        [
+          {
+            "node": "Wait 3 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3 Seconds": {
+      "main": [
+        [
+          {
+            "node": "Process Vision Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Vision Text": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Process JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process JSON": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Loop Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Check": {
+      "main": [
+        [
+          {
+            "node": "Should Continue?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Continue?": {
+      "main": [
+        [
+          {
+            "node": "Loop Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Workflow": {
+      "main": [
+        [
+          {
+            "node": "Counter Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Back": {
+      "main": [
+        [
+          {
+            "node": "Counter Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "google-vision-v1",
+  "meta": {
+    "instanceId": "google-vision-workflow"
+  },
+  "id": "google-vision-workflow",
+  "tags": []
+}
