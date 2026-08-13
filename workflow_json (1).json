@@ -1,0 +1,796 @@
+{
+  "name": "My workflow 9 - Fixed with Wait and Complete Fields",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Get workflow context - Counter Node\nconst inputData = $input.all();\nlet currentNumber = 1;\n\n// Check if we have input from a loop\nif (inputData.length > 0 && inputData[0].json.number) {\n  currentNumber = inputData[0].json.number;\n}\n\nconsole.log(`Processing PDF number: ${currentNumber}`);\n\nreturn [{\n  json: {\n    number: currentNumber\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        60
+      ],
+      "id": "d93d326d-2f99-4522-af7e-92976c1978ee",
+      "name": "Counter Node"
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "https://api.ocr.space/parse/image",
+        "allowUnauthorizedCerts": true,
+        "options": {
+          "bodyContentType": "multipart-form-data"
+        },
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "url",
+              "value": "=http://cr.skyaierp.com/{{$json.number}}-1.pdf"
+            },
+            {
+              "name": "language",
+              "value": "ara"
+            },
+            {
+              "name": "filetype",
+              "value": "PDF"
+            },
+            {
+              "name": "scale",
+              "value": "true"
+            }
+          ]
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "apikey",
+              "value": "K85451329588957"
+            }
+          ]
+        }
+      },
+      "name": "OCR.space API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        580,
+        60
+      ],
+      "id": "3eb1e0f2-5213-4c21-8358-74489bc0af2f"
+    },
+    {
+      "parameters": {
+        "amount": 15,
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        60
+      ],
+      "id": "wait-node-15sec",
+      "name": "Wait 15 Seconds"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ocrResult = $('OCR.space API').first().json;\n\nif (!ocrResult.ParsedResults || ocrResult.ParsedResults.length === 0) {\n  return {\n    json: {\n      error: true,\n      message: 'No ParsedResults returned from OCR.'\n    }\n  };\n}\n\n// 1. دمج النصوص من كل صفحات OCR\nlet fullText = ocrResult.ParsedResults\n  .map(p => p.ParsedText || '')\n  .join('\\n\\n');\n\n// 2. تنظيف النص\nconst cleanedText = fullText\n  .replace(/\\r\\n/g, '\\n')\n  .replace(/[ \\t]{2,}/g, ' ')        // حذف المسافات الزائدة\n  .replace(/\\n\\s*\\n/g, '\\n\\n')       // حذف الأسطر الفارغة المتكررة\n  .trim();\n\n// 3. تقسيم النص إلى أجزاء صغيرة (4000 حرف كحد أقصى للذكاء الاصطناعي)\nconst chunkSize = 4000;\nconst chunks = [];\n\nfor (let i = 0; i < cleanedText.length; i += chunkSize) {\n  chunks.push(cleanedText.slice(i, i + chunkSize));\n}\n\n// 4. إرجاع الناتج\nreturn {\n  json: {\n    ocrExitCode: ocrResult.OCRExitCode,\n    processingTime: ocrResult.ProcessingTimeInMilliseconds,\n    originalText: fullText,\n    cleanedText: cleanedText,\n    textChunks: chunks\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        60
+      ],
+      "id": "584d709d-ad0f-4ea8-b9c4-6abba8a9c365",
+      "name": "Clean code"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Extract the following fields from the provided Arabic text chunk and return them in a flat JSON object. Do not include any nested arrays or objects. Join multiple values in arrays using \" | \" for inner values and \";\" for separating entries. Ensure all fields appear in the output, even if their values are empty. All values must be strings or numbers only.\n\nFields to extract:\n\nID_الوثيقة\nنوع_الوثيقة\nالمصدر\nالتاريخ\nالمرخص_له\nالجهة_المانحة\nرقم_الشاليه\nالمنطقة_او_العنوان_التفصيلي\nإجمالي_المساحة\nالمساحة_المكشوفة\nالمساحة_المسقوفة\nإجمالي_المساحة_المكشوفة_في_الأرض_الأصلية\nالتفاصيل_المالية\nالمواصفات_التقنية\nالشروط_القانونية_الهامة\nتحذيرات_ومخاطر\nنقاط_الخلاصة_التنفيذية\nرقم_الترخيص\nتاريخ_الإصدار\nتاريخ_الانتهاء\nالرسوم_المدفوعة\nحالة_الترخيص\nملاحظات_إضافية\nاسم_المالك\nرقم_الهوية\nالجنسية\nرقم_الهاتف\nالبريد_الإلكتروني\nعنوان_المراسلة\nنوع_النشاط\nالغرض_من_الترخيص\nالمدة_الزمنية\nشروط_التجديد\nالوثائق_المطلوبة\nحالة_السداد\nالغرامات\nالتأمينات\nالضمانات\njsonnumber\n\nIMPORTANT: For the jsonnumber field, use this exact value: {{ $('Counter Node').item.json.number }}\n\nReturn ONLY the JSON object. It must start with \"{\" and end with \"}\". Do not include any explanation, notes, or extra text.\n\nInput text:\n{{ $json.textChunks }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [
+        1080,
+        60
+      ],
+      "id": "8bee7cf8-d149-46ad-8f69-0c157ba5b256",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-3-7-sonnet-20250219",
+          "cachedResultName": "Claude 3.7 Sonnet"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        1100,
+        -100
+      ],
+      "id": "8e6fb48e-93b8-4b52-9cb0-98bef3cf601b",
+      "name": "Anthropic Chat Model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "m7HdyqS94kNsRniJ",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "let outputStr = $input.first().json.output;\n\n// استخراج أول كود JSON - البحث عن object بدلاً من array\nlet jsonMatch = outputStr.match(/({[\\s\\S]*})/);\n\nif (!jsonMatch) {\n  throw new Error(\"No valid JSON found in the input!\");\n}\n\nlet jsonStr = jsonMatch[1];\n\n// تنفيذ الـ parse\nlet data = JSON.parse(jsonStr);\n\n// إضافة رقم الـ PDF من Counter Node إذا لم يكن موجوداً\nif (!data.jsonnumber) {\n  data.jsonnumber = $('Counter Node').first().json.number;\n}\n\nconsole.log(`Parsed data for PDF ${data.jsonnumber}:`, JSON.stringify(data, null, 2));\n\nreturn [{ json: data }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        60
+      ],
+      "id": "b0dc4d9d-33ad-4f12-886a-3ca37fdf5115",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1YGRZ2vZBQKggEVJxHxgUWulj56UUbkOmhI66FA7k0lo",
+          "mode": "list",
+          "cachedResultName": "extractdata",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YGRZ2vZBQKggEVJxHxgUWulj56UUbkOmhI66FA7k0lo/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1348648184,
+          "mode": "list",
+          "cachedResultName": "Sheet2",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YGRZ2vZBQKggEVJxHxgUWulj56UUbkOmhI66FA7k0lo/edit#gid=1348648184"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "jsonnumber": "={{ $json.jsonnumber }}",
+            "ID_الوثيقة": "={{ $json[\"ID_الوثيقة\"] }}",
+            "نوع_الوثيقة": "={{ $json[\"نوع_الوثيقة\"] }}",
+            "المصدر": "={{ $json[\"المصدر\"] }}",
+            "التاريخ": "={{ $json[\"التاريخ\"] }}",
+            "المرخص_له": "={{ $json[\"المرخص_له\"] }}",
+            "الجهة_المانحة": "={{ $json[\"الجهة_المانحة\"] }}",
+            "رقم_الشاليه": "={{ $json[\"رقم_الشاليه\"] }}",
+            "المنطقة_او_العنوان_التفصيلي": "={{ $json[\"المنطقة_او_العنوان_التفصيلي\"] }}",
+            "إجمالي_المساحة": "={{ $json[\"إجمالي_المساحة\"] }}",
+            "المساحة_المكشوفة": "={{ $json[\"المساحة_المكشوفة\"] }}",
+            "المساحة_المسقوفة": "={{ $json[\"المساحة_المسقوفة\"] }}",
+            "إجمالي_المساحة_المكشوفة_في_الأرض_الأصلية": "={{ $json[\"إجمالي_المساحة_المكشوفة_في_الأرض_الأصلية\"] }}",
+            "التفاصيل_المالية": "={{ $json[\"التفاصيل_المالية\"] }}",
+            "المواصفات_التقنية": "={{ $json[\"المواصفات_التقنية\"] }}",
+            "الشروط_القانونية_الهامة": "={{ $json[\"الشروط_القانونية_الهامة\"] }}",
+            "تحذيرات_ومخاطر": "={{ $json[\"تحذيرات_ومخاطر\"] }}",
+            "نقاط_الخلاصة_التنفيذية": "={{ $json[\"نقاط_الخلاصة_التنفيذية\"] }}",
+            "رقم_الترخيص": "={{ $json[\"رقم_الترخيص\"] }}",
+            "تاريخ_الإصدار": "={{ $json[\"تاريخ_الإصدار\"] }}",
+            "تاريخ_الانتهاء": "={{ $json[\"تاريخ_الانتهاء\"] }}",
+            "الرسوم_المدفوعة": "={{ $json[\"الرسوم_المدفوعة\"] }}",
+            "حالة_الترخيص": "={{ $json[\"حالة_الترخيص\"] }}",
+            "ملاحظات_إضافية": "={{ $json[\"ملاحظات_إضافية\"] }}",
+            "اسم_المالك": "={{ $json[\"اسم_المالك\"] }}",
+            "رقم_الهوية": "={{ $json[\"رقم_الهوية\"] }}",
+            "الجنسية": "={{ $json[\"الجنسية\"] }}",
+            "رقم_الهاتف": "={{ $json[\"رقم_الهاتف\"] }}",
+            "البريد_الإلكتروني": "={{ $json[\"البريد_الإلكتروني\"] }}",
+            "عنوان_المراسلة": "={{ $json[\"عنوان_المراسلة\"] }}",
+            "نوع_النشاط": "={{ $json[\"نوع_النشاط\"] }}",
+            "الغرض_من_الترخيص": "={{ $json[\"الغرض_من_الترخيص\"] }}",
+            "المدة_الزمنية": "={{ $json[\"المدة_الزمنية\"] }}",
+            "شروط_التجديد": "={{ $json[\"شروط_التجديد\"] }}",
+            "الوثائق_المطلوبة": "={{ $json[\"الوثائق_المطلوبة\"] }}",
+            "حالة_السداد": "={{ $json[\"حالة_السداد\"] }}",
+            "الغرامات": "={{ $json[\"الغرامات\"] }}",
+            "التأمينات": "={{ $json[\"التأمينات\"] }}",
+            "الضمانات": "={{ $json[\"الضمانات\"] }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "jsonnumber",
+              "displayName": "jsonnumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ID_الوثيقة",
+              "displayName": "ID_الوثيقة",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "نوع_الوثيقة",
+              "displayName": "نوع_الوثيقة",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "المصدر",
+              "displayName": "المصدر",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "التاريخ",
+              "displayName": "التاريخ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "المرخص_له",
+              "displayName": "المرخص_له",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الجهة_المانحة",
+              "displayName": "الجهة_المانحة",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "رقم_الشاليه",
+              "displayName": "رقم_الشاليه",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "المنطقة_او_العنوان_التفصيلي",
+              "displayName": "المنطقة_او_العنوان_التفصيلي",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "إجمالي_المساحة",
+              "displayName": "إجمالي_المساحة",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "المساحة_المكشوفة",
+              "displayName": "المساحة_المكشوفة",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "المساحة_المسقوفة",
+              "displayName": "المساحة_المسقوفة",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "إجمالي_المساحة_المكشوفة_في_الأرض_الأصلية",
+              "displayName": "إجمالي_المساحة_المكشوفة_في_الأرض_الأصلية",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "التفاصيل_المالية",
+              "displayName": "التفاصيل_المالية",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "المواصفات_التقنية",
+              "displayName": "المواصفات_التقنية",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الشروط_القانونية_الهامة",
+              "displayName": "الشروط_القانونية_الهامة",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "تحذيرات_ومخاطر",
+              "displayName": "تحذيرات_ومخاطر",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "نقاط_الخلاصة_التنفيذية",
+              "displayName": "نقاط_الخلاصة_التنفيذية",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "رقم_الترخيص",
+              "displayName": "رقم_الترخيص",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "تاريخ_الإصدار",
+              "displayName": "تاريخ_الإصدار",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "تاريخ_الانتهاء",
+              "displayName": "تاريخ_الانتهاء",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الرسوم_المدفوعة",
+              "displayName": "الرسوم_المدفوعة",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "حالة_الترخيص",
+              "displayName": "حالة_الترخيص",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ملاحظات_إضافية",
+              "displayName": "ملاحظات_إضافية",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "اسم_المالك",
+              "displayName": "اسم_المالك",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "رقم_الهوية",
+              "displayName": "رقم_الهوية",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الجنسية",
+              "displayName": "الجنسية",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "رقم_الهاتف",
+              "displayName": "رقم_الهاتف",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "البريد_الإلكتروني",
+              "displayName": "البريد_الإلكتروني",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "عنوان_المراسلة",
+              "displayName": "عنوان_المراسلة",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "نوع_النشاط",
+              "displayName": "نوع_النشاط",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الغرض_من_الترخيص",
+              "displayName": "الغرض_من_الترخيص",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "المدة_الزمنية",
+              "displayName": "المدة_الزمنية",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "شروط_التجديد",
+              "displayName": "شروط_التجديد",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الوثائق_المطلوبة",
+              "displayName": "الوثائق_المطلوبة",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "حالة_السداد",
+              "displayName": "حالة_السداد",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الغرامات",
+              "displayName": "الغرامات",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "التأمينات",
+              "displayName": "التأمينات",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الضمانات",
+              "displayName": "الضمانات",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "useAppend": false
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1520,
+        60
+      ],
+      "id": "3d882ffd-a620-4263-ab1a-399e26703cc8",
+      "name": "Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ZhKYwN0Ynm2Z5KYd",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get current number from Counter Node\nlet current = $('Counter Node').first().json.number;\n\nconsole.log(`Finished processing number: ${current}`);\n\n// Check if done\nif (current >= 9) {\n  console.log('All PDFs processed!');\n  return [{\n    json: {\n      finished: true,\n      message: `Completed processing PDFs 1-${current}`,\n      totalProcessed: current\n    }\n  }];\n}\n\n// Continue with next number\nlet next = current + 1;\nconsole.log(`Next PDF to process: ${next}`);\n\nreturn [{\n  json: {\n    number: next,\n    continue: true,\n    currentlyProcessed: current\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1740,
+        60
+      ],
+      "id": "7c25e235-6818-4048-a15e-7d99d6978622",
+      "name": "Loop Check"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "551a8961-7cac-4f27-922e-841e1f5f3f79",
+              "leftValue": "={{ $json.continue }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1960,
+        60
+      ],
+      "id": "0c9bcd02-b04e-44db-8e10-a8379aa0aff8",
+      "name": "Should Continue?"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        140,
+        60
+      ],
+      "id": "76713aab-6aad-43b1-8bea-f2a74dcc5efa",
+      "name": "When clicking 'Test workflow'"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the incremented number from Loop Check\nlet nextNumber = $('Loop Check').first().json.number;\n\nconsole.log(`Looping back with number: ${nextNumber}`);\n\n// Return the number to feed back to Counter Node\nreturn [{\n  json: {\n    number: nextNumber\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        220
+      ],
+      "id": "6ad9bab6-c07c-4943-bd55-3b702ca127ce",
+      "name": "Loop Back"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Counter Node": {
+      "main": [
+        [
+          {
+            "node": "OCR.space API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OCR.space API": {
+      "main": [
+        [
+          {
+            "node": "Wait 15 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 15 Seconds": {
+      "main": [
+        [
+          {
+            "node": "Clean code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean code": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Loop Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Check": {
+      "main": [
+        [
+          {
+            "node": "Should Continue?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Continue?": {
+      "main": [
+        [
+          {
+            "node": "Loop Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking 'Test workflow'": {
+      "main": [
+        [
+          {
+            "node": "Counter Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Back": {
+      "main": [
+        [
+          {
+            "node": "Counter Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "770f5a47-67b7-4201-bacf-678ea5432ec9",
+  "meta": {
+    "instanceId": "7885bc8573d26fb092bff1a2b27f735e8286878f164c5891dfb3f6e23c9b3cfa"
+  },
+  "id": "IObPB3yDal5kaFk0",
+  "tags": []
+}
