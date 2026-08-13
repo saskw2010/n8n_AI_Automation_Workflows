@@ -1,0 +1,377 @@
+{
+  "name": "10-24-pdf-extraction",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const inputData = $input.all();\nlet currentNumber = 100001;\n\nif (inputData.length > 0 && inputData[0].json.number) {\n  currentNumber = inputData[0].json.number;\n}\n\nconsole.log(`Processing PDF number: ${currentNumber}`);\n\nreturn [{\n  json: {\n    number: currentNumber\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1980, 40],
+      "id": "ce30888d-bd23-452d-9803-1fee985b5a00",
+      "name": "Counter Node"
+    },
+    {
+      "parameters": {
+        "jsCode": "const number = $json.number;\n\n// Change the URL to point to PDF files instead of JPG\nconst url = `http://cr.skyaierp.com/pdf/10-24/${number}.pdf`;\n\nreturn [{\n  json: {\n    number: number,\n    url: url\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1500, -140],
+      "id": "cd7e0780-138c-4099-8bf1-58979833986f",
+      "name": "codeurl"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "name": "Download PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-1560, -680],
+      "id": "4a4f68c2-78e3-4d54-8b38-4bd312ec6f61"
+    },
+    {
+      "parameters": {
+        "operation": "extractText",
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "name": "Extract PDF Text",
+      "type": "n8n-nodes-base.pdf",
+      "typeVersion": 1,
+      "position": [-1220, -680],
+      "id": "pdf-text-extractor"
+    },
+    {
+      "parameters": {
+        "jsCode": "const pdfResult = $input.first();\n\nconsole.log('PDF extraction result:', JSON.stringify(pdfResult, null, 2));\n\n// Extract text from PDF result\nlet extractedText = '';\n\nif (pdfResult.json && pdfResult.json.text) {\n  extractedText = pdfResult.json.text;\n} else if (pdfResult.json && typeof pdfResult.json === 'string') {\n  extractedText = pdfResult.json;\n} else {\n  return {\n    json: {\n      error: true,\n      message: 'No text extracted from PDF',\n      result: pdfResult\n    }\n  };\n}\n\n// Clean the extracted text\nconst cleanedText = extractedText\n  .replace(/\\r\\n/g, '\\n')\n  .replace(/[ \\t]{2,}/g, ' ')\n  .replace(/\\n\\s*\\n/g, '\\n\\n')\n  .trim();\n\n// Split text into chunks for processing\nconst chunkSize = 4000;\nconst chunks = [];\n\nfor (let i = 0; i < cleanedText.length; i += chunkSize) {\n  chunks.push(cleanedText.slice(i, i + chunkSize));\n}\n\nconsole.log('Extracted text length:', extractedText.length);\nconsole.log('Text preview:', extractedText.substring(0, 300));\n\nreturn {\n  json: {\n    originalText: extractedText,\n    cleanedText: cleanedText,\n    textChunks: chunks,\n    success: true,\n    textLength: extractedText.length\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-980, -680],
+      "id": "process-pdf-text",
+      "name": "Process PDF Text"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [-820, 20],
+      "id": "06af6bc6-d3b2-4f0a-82e6-74fe9eb2ae38",
+      "name": "Wait 3 Seconds",
+      "webhookId": "8f3a6890-8dd4-4a00-ab7d-1922632787bb"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Extract the following fields from the provided Arabic text and return them in a flat JSON object. Do not include any nested arrays or objects. Join multiple values using \" | \" for inner values and \";\" for separating entries. Ensure all fields appear in the output, even if their values are empty. All values must be strings or numbers only.\n\nFields to extract:\n\nالصفحة\nالدولة\nالمحافظة\nنوع_الترخيص\nرقم_الترخيص_الصحي\nتاريخ_تجديد_الترخيص_الصحي\nتاريخ_انتهاء_الترخيص_الصحي\nتاريخ_الإصدار_الأول_للترخيص_الصحي\nاسم_صاحب_الترخيص\nالرقم_المدني_لصاحب_الترخيص\nجنسية_صاحب_الترخيص\nالممثل_القانوني\nالرقم_المدني_للممثل_القانوني\nجنسية_الممثل_القانوني\nالاسم_التجاري\nرقم_الترخيص_التجاري\nتاريخ_إصدار_الترخيص_التجاري\nتاريخ_انتهاء_الترخيص_التجاري\nالنشاط_التجاري\nالمنطقة\nالقطعة\nالشارع\nالمبنى\nالطابق\nالوحدة\nالرقم_الآلي_للعقار\nنوع_العقار\nمالك_العقار\nالمساحة_م2\nالرسوم_دك\nاسم_المفتش\nحالة_تحصيل_الرسوم\nملاحظات\nرقم_الملف\njsonnumber\n\nIMPORTANT: For the jsonnumber field, use this exact value: {{ $('Counter Node').item.json.number }}\n\nReturn ONLY the JSON object. It must start with \"{\" and end with \"}\". Do not include any explanation, notes, or extra text.\n\nInput text:\n{{ $json.textChunks }}\nalso use to extract in new cell as link {{ $('codeurl').item.json.url }} like this \n{\n  \"الصفحة\": \"{{ $('codeurl').item.json.url }}\",\n  \"الدولة\": \"\",\n  \"المحافظة\": \"\",\n  \"نوع_الترخيص\": \"\",\n  \"رقم_الترخيص_الصحي\": \"\",\n  \"تاريخ_تجديد_الترخيص_الصحي\": \"\",\n  \"تاريخ_انتهاء_الترخيص_الصحي\": \"\",\n  \"تاريخ_الإصدار_الأول_للترخيص_الصحي\": \"\",\n  \"اسم_صاحب_الترخيص\": \"\",\n  \"الرقم_المدني_لصاحب_الترخيص\": \"\",\n  \"جنسية_صاحب_الترخيص\": \"\",\n  \"الممثل_القانوني\": \"\",\n  \"الرقم_المدني_للممثل_القانوني\": \"\",\n  \"جنسية_الممثل_القانوني\": \"\",\n  \"الاسم_التجاري\": \"\",\n  \"رقم_الترخيص_التجاري\": \"\",\n  \"تاريخ_إصدار_الترخيص_التجاري\": \"\",\n  \"تاريخ_انتهاء_الترخيص_التجاري\": \"\",\n  \"النشاط_التجاري\": \"\",\n  \"المنطقة\": \"\",\n  \"القطعة\": \"\",\n  \"الشارع\": \"\",\n  \"المبنى\": \"\",\n  \"الطابق\": \"\",\n  \"الوحدة\": \"\",\n  \"الرقم_الآلي_للعقار\": \"\",\n  \"نوع_العقار\": \"\",\n  \"مالك_العقار\": \"\",\n  \"المساحة_م2\": \"\",\n  \"الرسوم_دك\": \"\",\n  \"اسم_المفتش\": \"\",\n  \"حالة_تحصيل_الرسوم\": \"\",\n  \"ملاحظات\": \"\",\n  \"رقم_الملف\": \"\",\n  \"jsonnumber\": \"{{ $('Counter Node').item.json.number }}\"\n}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [-440, -100],
+      "id": "824eaf29-328d-4677-b54e-30a840d03d0c",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "let outputStr = $input.first().json.output;\n\nlet jsonMatch = outputStr.match(/({[\\s\\S]*})/);\n\nif (!jsonMatch) {\n  throw new Error(\"No valid JSON found in AI output!\");\n}\n\nlet data = JSON.parse(jsonMatch[1]);\n\nif (!data.jsonnumber) {\n  data.jsonnumber = $('Counter Node').first().json.number;\n}\n\nconsole.log(`Final data for PDF ${data.jsonnumber}:`, JSON.stringify(data, null, 2));\n\nreturn [{ json: data }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-120, -640],
+      "id": "42ddd4ea-9656-4644-b77e-e3969ebf2ede",
+      "name": "Process JSON"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1znD7yAwpcj0MO_q5AhVucT3MFZfFjNWBd2ULtJifFeI",
+          "mode": "list",
+          "cachedResultName": "Mogahedextract",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1znD7yAwpcj0MO_q5AhVucT3MFZfFjNWBd2ULtJifFeI/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "10-24",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1znD7yAwpcj0MO_q5AhVucT3MFZfFjNWBd2ULtJifFeI/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [0, 40],
+      "id": "90dce95b-1d39-44fb-babd-21847877a5f4",
+      "name": "Google Sheets"
+    },
+    {
+      "parameters": {
+        "jsCode": "let current = $('Counter Node').first().json.number;\n\nconsole.log(`Finished processing PDF number: ${current}`);\n\nif (current >= 100301) {\n  console.log('All PDFs processed!');\n  return [{\n    json: {\n      finished: true,\n      message: `Completed processing PDFs 1-${current}`,\n      totalProcessed: current\n    }\n  }];\n}\n\nlet next = current + 1;\nconsole.log(`Next PDF to process: ${next}`);\n\nreturn [{\n  json: {\n    number: next,\n    continue: true,\n    currentlyProcessed: current\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 40],
+      "id": "5f4503ed-b3b0-44b0-af21-89b84739218e",
+      "name": "Loop Check"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "continue-condition",
+              "leftValue": "={{ $json.continue }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [440, 40],
+      "id": "8c4c94aa-d379-4b84-aaf0-0497c3b46353",
+      "name": "Should Continue?"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-2200, 40],
+      "id": "7e50386b-0d85-4708-8721-8bfaa4df86b0",
+      "name": "Start Workflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "let nextNumber = $('Loop Check').first().json.number;\n\nconsole.log(`Looping back with number: ${nextNumber}`);\n\nreturn [{\n  json: {\n    number: nextNumber\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [820, 20],
+      "id": "9f355358-02e5-4130-bbfb-4438b9454bd7",
+      "name": "Loop Back"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-pro-preview-03-25",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [-420, 420],
+      "id": "5d9769f0-080c-462a-a19f-e94f56eda015",
+      "name": "Google Gemini Chat Model"
+    },
+    {
+      "parameters": {
+        "path": "a38989e3-6a3c-41f6-a815-ca45fbd3c59d",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-2160, -380],
+      "id": "11242470-33bd-42b4-a0ba-3e85a361da46",
+      "name": "Webhook",
+      "webhookId": "a38989e3-6a3c-41f6-a815-ca45fbd3c59d"
+    }
+  ],
+  "connections": {
+    "Counter Node": {
+      "main": [
+        [
+          {
+            "node": "codeurl",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "codeurl": {
+      "main": [
+        [
+          {
+            "node": "Download PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download PDF": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF Text": {
+      "main": [
+        [
+          {
+            "node": "Process PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process PDF Text": {
+      "main": [
+        [
+          {
+            "node": "Wait 3 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3 Seconds": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Process JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process JSON": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Loop Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Check": {
+      "main": [
+        [
+          {
+            "node": "Should Continue?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Continue?": {
+      "main": [
+        [
+          {
+            "node": "Loop Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Workflow": {
+      "main": [
+        [
+          {
+            "node": "Counter Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Back": {
+      "main": [
+        [
+          {
+            "node": "Counter Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Counter Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
