@@ -1,0 +1,172 @@
+
+{
+  "name": "My workflow 9 - Google Vision OCR",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        120,
+        40
+      ],
+      "name": "Start"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "resource": "vision",
+        "operation": "annotateImage",
+        "image": {
+          "source": "url",
+          "url": "http://cr.skyaierp.com/2-1.pdf"
+        },
+        "features": [
+          {
+            "type": "DOCUMENT_TEXT_DETECTION"
+          }
+        ]
+      },
+      "name": "Google Vision OCR",
+      "type": "n8n-nodes-base.googleCloud",
+      "typeVersion": 1,
+      "position": [
+        300,
+        40
+      ],
+      "credentials": {
+        "googleCloudApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Vision Service Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const responses = $json.responses || []\nconst fullText = responses.map(r => r.fullTextAnnotation?.text || '').join('\n\n');\n\nconst cleanedText = fullText\n  .replace(/\r\n/g, '\n')\n  .replace(/[ \t]{2,}/g, ' ')\n  .replace(/\n\s*\n/g, '\n\n')\n  .trim();\n\nconst chunkSize = 4000;\nconst chunks = [];\nfor (let i = 0; i < cleanedText.length; i += chunkSize) {\n  chunks.push(cleanedText.slice(i, i + chunkSize));\n}\n\nreturn { json: { originalText: fullText, cleanedText, textChunks: chunks } };"
+      },
+      "name": "Clean code",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Extract the following fields from the provided Arabic text chunk and return them in a flat JSON object. Do not include any nested arrays or objects. Join multiple values in arrays using \" | \" for inner values and ; for separating entries. Ensure all fields appear in the output, even if their values are empty. All values must be strings or numbers only.\n\nFields to extract:\n\nID_الوثيقة\nنوع_الوثيقة\nالمصدر\nالتاريخ\nالمرخص_له\nالجهة_المانحة (in format: \"الإدارة المختصة- [اسم الإدارة] : [المحافظة]\")\nرقم_الشاليه\nالمنطقة_او_العنوان_التفصيلي (concatenate all related address fields separated by \" ; \")\nإجمالي_المساحة\nالمساحة_المكشوفة\nالمساحة_المسقوفة\nإجمالي_المساحة_المكشوفة_في_الأرض_الأصلية\nالتفاصيل_المالية (format: بند | قيمة | عملة)\nالمواصفات_التقنية (format: بند | قيمة | وحدة)\nالشروط_القانونية_الهامة (joined by semicolon)\nتحذيرات_ومخاطر (joined by semicolon)\nنقاط_الخلاصة_التنفيذية (joined by semicolon)\n\nReturn ONLY the JSON object. It must start with { and end with }. Do not include any explanation, notes, or extra text.\n\nInput text:\n{{ $json.textChunks }}"
+      },
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [
+        740,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let outputStr = $input.first().json.output;\nlet jsonMatch = outputStr.match(/({[\\s\\S]*})/);\nif (!jsonMatch) throw new Error(\"No valid JSON found in the input!\");\nlet jsonStr = jsonMatch[1];\nlet data = JSON.parse(jsonStr);\nreturn [{ json: data }];"
+      },
+      "name": "Code1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": "1YGRZ2vZBQKggEVJxHxgUWulj56UUbkOmhI66FA7k0lo",
+        "sheetName": 1348648184,
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ID_الوثيقة": "={{ $json[\"ID_الوثيقة\"] }}",
+            "التاريخ": "={{ $json[\"التاريخ\"] }}",
+            "نوع_الوثيقة": "={{ $json[\"نوع_الوثيقة\"] }}",
+            "المصدر": "={{ $json[\"المصدر\"] }}",
+            "المرخص_له": "={{ $json[\"المرخص_له\"] }}",
+            "الجهة_المانحة": "={{ $json[\"الجهة_المانحة\"] }}",
+            "التفاصيل_المالية": "={{ $json[\"المنطقة_او_العنوان_التفصيلي\"] }}",
+            "المواصفات_التقنية": "={{ $json[\"نقاط_الخلاصة_التنفيذية\"] }}"
+          }
+        }
+      },
+      "name": "Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1180,
+        40
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ZhKYwN0Ynm2Z5KYd",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Google Vision OCR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Vision OCR": {
+      "main": [
+        [
+          {
+            "node": "Clean code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean code": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
