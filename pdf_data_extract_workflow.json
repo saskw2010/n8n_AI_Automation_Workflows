@@ -1,0 +1,323 @@
+{
+  "name": "Multi-Page PDF to Single Sheet Workflow",
+  "version": 2,
+  "description": "Convert multi-page PDF to single Google Sheet with each page as one row",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerOn": "fileUploaded",
+        "options": {
+          "allowedMimeTypes": "application/pdf"
+        }
+      },
+      "id": "pdf-upload-trigger",
+      "name": "PDF Upload Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [180, 300],
+      "webhookId": "multi-page-pdf-upload"
+    },
+    {
+      "parameters": {
+        "jsCode": "// فحص وتحضير ملف PDF\nconst inputData = $input.first();\n\nif (!inputData || !inputData.binary) {\n  throw new Error('لا يوجد ملف PDF');\n}\n\nconst fileData = inputData.binary.data;\nconst fileName = inputData.json.fileName || 'unknown.pdf';\nconst fileSize = fileData.length;\n\n// فحص حجم الملف\nif (fileSize > 100 * 1024 * 1024) {\n  throw new Error('حجم الملف كبير جداً (أكثر من 100MB)');\n}\n\nif (!fileName.toLowerCase().endsWith('.pdf')) {\n  throw new Error('يجب أن يكون الملف من نوع PDF');\n}\n\nconst baseFileName = fileName.replace('.pdf', '');\nconst timestamp = new Date().toISOString().replace(/[:.]/g, '-');\n\nconsole.log(`بدء معالجة ملف: ${fileName} (${(fileSize / 1024).toFixed(2)} KB)`);\n\nreturn {\n  fileName: fileName,\n  baseFileName: baseFileName,\n  fileSize: fileSize,\n  fileSizeKB: Math.round(fileSize / 1024),\n  uploadTime: new Date().toISOString(),\n  timestamp: timestamp,\n  processingId: `PDF_${timestamp}`,\n  status: 'ready_for_extraction'\n};"
+      },
+      "id": "validate-pdf",
+      "name": "Validate PDF File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [360, 300]
+    },
+    {
+      "parameters": {
+        "amount": 1,
+        "unit": "seconds"
+      },
+      "id": "wait-before-extract",
+      "name": "Wait Before Extract",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [540, 300]
+    },
+    {
+      "parameters": {
+        "operation": "extractText",
+        "options": {
+          "passwordProtected": false,
+          "pages": "",
+          "splitPages": true
+        }
+      },
+      "id": "pdf-extract-pages",
+      "name": "PDF Extract Pages",
+      "type": "n8n-nodes-base.pdf",
+      "typeVersion": 1,
+      "position": [720, 300],
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "// معالجة جميع الصفحات وتحضيرها للجدول\nconst pages = $input.all();\nconst fileInfo = $('validate-pdf').first().json;\n\nif (!pages || pages.length === 0) {\n  throw new Error('لم يتم العثور على صفحات في PDF');\n}\n\nconsole.log(`تم استخراج ${pages.length} صفحة من PDF`);\n\n// معالجة كل صفحة وتحويلها لصف في الجدول\nconst tableRows = pages.map((page, index) => {\n  const pageText = page.json.text || '';\n  const pageNumber = index + 1;\n  \n  // تنظيف النص\n  let cleanedText = pageText\n    .replace(/\\n{3,}/g, ' | ')\n    .replace(/\\n{2}/g, ' | ')\n    .replace(/\\n/g, ' ')\n    .replace(/\\s{2,}/g, ' ')\n    .replace(/[^\\u0600-\\u06FF\\u0750-\\u077F\\u08A0-\\u08FF\\uFB50-\\uFDFF\\uFE70-\\uFEFF\\s\\d\\.,!?;:()\\[\\]{}\"'\\-@#%&*+=<>/\\\\|_~`]/g, '')\n    .replace(/\\s+([.,!?;:])/g, '$1')\n    .replace(/([.,!?;:])(?=[^\\s])/g, '$1 ')\n    .trim();\n\n  // استخراج البيانات الأساسية\n  const emails = (cleanedText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}/g) || []).join(', ');\n  const phones = (cleanedText.match(/[\\+]?[\\d\\s\\-\\(\\)]{8,}/g) || []).map(p => p.trim()).join(', ');\n  const numbers = (cleanedText.match(/\\d+/g) || []).slice(0, 5).join(', ');\n  const dates = (cleanedText.match(/\\d{1,2}[\\/-]\\d{1,2}[\\/-]\\d{2,4}|\\d{4}[\\/-]\\d{1,2}[\\/-]\\d{1,2}/g) || []).join(', ');\n  \n  // تحليل النص\n  const wordCount = cleanedText.split(/\\s+/).filter(w => w.length > 0).length;\n  const charCount = cleanedText.length;\n  const arabicChars = (cleanedText.match(/[\\u0600-\\u06FF]/g) || []).length;\n  const englishChars = (cleanedText.match(/[a-zA-Z]/g) || []).length;\n  \n  // تحديد نوع المحتوى\n  let contentType = 'نص عام';\n  if (cleanedText.includes('فاتورة') || cleanedText.includes('invoice')) contentType = 'فاتورة';\n  else if (cleanedText.includes('عقد') || cleanedText.includes('contract')) contentType = 'عقد';\n  else if (cleanedText.includes('تقرير') || cleanedText.includes('report')) contentType = 'تقرير';\n  else if (cleanedText.includes('شهادة') || cleanedText.includes('certificate')) contentType = 'شهادة';\n  else if (cleanedText.includes('جدول') || cleanedText.includes('table')) contentType = 'جدول';\n  else if (cleanedText.includes('قائمة') || cleanedText.includes('list')) contentType = 'قائمة';\n  \n  // تحديد اللغة الأساسية\n  const primaryLanguage = arabicChars > englishChars ? 'العربية' : 'الإنجليزية';\n  \n  // تقييم جودة الصفحة\n  let qualityScore = 100;\n  if (wordCount < 10) qualityScore = 30;\n  else if (wordCount < 25) qualityScore = 60;\n  else if (wordCount < 50) qualityScore = 80;\n  \n  // إنشاء ملخص قصير\n  const summary = cleanedText.length > 150 ? cleanedText.substring(0, 147) + '...' : cleanedText;\n  \n  // الكلمات المفتاحية (أول 10 كلمات مهمة)\n  const keywords = cleanedText\n    .split(/\\s+/)\n    .filter(word => word.length > 3 && !['هذا', 'هذه', 'ذلك', 'تلك', 'التي', 'الذي', 'which', 'that', 'this', 'with'].includes(word.toLowerCase()))\n    .slice(0, 10)\n    .join(', ');\n\n  return {\n    'رقم الصفحة': pageNumber,\n    'نوع المحتوى': contentType,\n    'عدد الكلمات': wordCount,\n    'عدد الأحرف': charCount,\n    'اللغة الأساسية': primaryLanguage,\n    'جودة الصفحة (%)': qualityScore,\n    'البريد الإلكتروني': emails || 'لا يوجد',\n    'أرقام الهاتف': phones || 'لا يوجد',\n    'التواريخ': dates || 'لا يوجد',\n    'الأرقام المهمة': numbers || 'لا يوجد',\n    'الكلمات المفتاحية': keywords || 'لا يوجد',\n    'ملخص المحتوى': summary || 'صفحة فارغة',\n    'النص الكامل': cleanedText || 'لا يوجد نص',\n    'اسم الملف': fileInfo.fileName,\n    'تاريخ المعالجة': new Date().toISOString().split('T')[0],\n    'وقت المعالجة': new Date().toISOString().split('T')[1].split('.')[0],\n    'معرف المعالجة': fileInfo.processingId\n  };\n});\n\n// فلترة الصفحات الفارغة (اختياري)\nconst validRows = tableRows.filter(row => row['عدد الكلمات'] > 0);\n\nconsole.log(`تم تحضير ${validRows.length} صف للجدول من أصل ${tableRows.length} صفحة`);\n\n// إضافة صف الملخص العام\nconst summaryRow = {\n  'رقم الصفحة': 'ملخص عام',\n  'نوع المحتوى': 'تقرير إجمالي',\n  'عدد الكلمات': validRows.reduce((sum, row) => sum + row['عدد الكلمات'], 0),\n  'عدد الأحرف': validRows.reduce((sum, row) => sum + row['عدد الأحرف'], 0),\n  'اللغة الأساسية': 'متعدد',\n  'جودة الصفحة (%)': Math.round(validRows.reduce((sum, row) => sum + row['جودة الصفحة (%)'], 0) / validRows.length),\n  'البريد الإلكتروني': [...new Set(validRows.map(r => r['البريد الإلكتروني']).filter(e => e !== 'لا يوجد'))].join(', ') || 'لا يوجد',\n  'أرقام الهاتف': [...new Set(validRows.map(r => r['أرقام الهاتف']).filter(p => p !== 'لا يوجد'))].join(', ') || 'لا يوجد',\n  'التواريخ': [...new Set(validRows.map(r => r['التواريخ']).filter(d => d !== 'لا يوجد'))].join(', ') || 'لا يوجد',\n  'الأرقام المهمة': 'متعدد',\n  'الكلمات المفتاحية': 'جميع الصفحات',\n  'ملخص المحتوى': `مستند ${fileInfo.fileName} يحتوي على ${validRows.length} صفحة صالحة`,\n  'النص الكامل': 'ملخص عام لجميع الصفحات',\n  'اسم الملف': fileInfo.fileName,\n  'تاريخ المعالجة': new Date().toISOString().split('T')[0],\n  'وقت المعالجة': new Date().toISOString().split('T')[1].split('.')[0],\n  'معرف المعالجة': fileInfo.processingId\n};\n\n// إضافة صف الملخص في النهاية\nvalidRows.push(summaryRow);\n\nreturn validRows;"
+      },
+      "id": "prepare-table-rows",
+      "name": "Prepare Table Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "id": "wait-before-sheets",
+      "name": "Wait Before Sheets",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1080, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "create",
+        "title": "={{$('validate-pdf').first().json.baseFileName}}_Extracted_Data_{{$('validate-pdf').first().json.timestamp}}",
+        "sheetsUi": {
+          "sheetValues": [
+            {
+              "sheetName": "Extracted_Pages_Data",
+              "headerRow": true,
+              "values": "={{$json}}"
+            }
+          ]
+        },
+        "options": {
+          "valueInputMode": "USER_ENTERED"
+        }
+      },
+      "id": "create-google-sheet",
+      "name": "Create Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1260, 300],
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "sheet-created",
+              "leftValue": "={{$json.spreadsheetId}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-sheet-creation",
+      "name": "Check Sheet Creation",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// تحضير تقرير النجاح النهائي\nconst sheetResult = $input.first();\nconst tableData = $('prepare-table-rows').first().json;\nconst fileInfo = $('validate-pdf').first().json;\n\nconst totalPages = Array.isArray(tableData) ? tableData.length - 1 : 0; // -1 لأن آخر صف هو الملخص\nconst totalWords = Array.isArray(tableData) && tableData.length > 0 ? \n  tableData.slice(0, -1).reduce((sum, row) => sum + (row['عدد الكلمات'] || 0), 0) : 0;\nconst averageQuality = Array.isArray(tableData) && tableData.length > 1 ? \n  Math.round(tableData.slice(0, -1).reduce((sum, row) => sum + (row['جودة الصفحة (%)'] || 0), 0) / (tableData.length - 1)) : 0;\n\nconst finalReport = {\n  success: true,\n  message: 'تم إنشاء Google Sheet بنجاح مع جميع صفحات PDF',\n  fileInfo: {\n    fileName: fileInfo.fileName,\n    fileSize: fileInfo.fileSizeKB + ' KB',\n    processingId: fileInfo.processingId,\n    uploadTime: fileInfo.uploadTime\n  },\n  processingResults: {\n    totalPagesProcessed: totalPages,\n    totalWordsExtracted: totalWords,\n    averagePageQuality: averageQuality + '%',\n    processingTime: new Date().toISOString()\n  },\n  googleSheet: {\n    spreadsheetId: sheetResult.json.spreadsheetId,\n    sheetUrl: sheetResult.json.spreadsheetUrl,\n    sheetName: 'Extracted_Pages_Data',\n    totalRows: Array.isArray(tableData) ? tableData.length : 0,\n    columns: [\n      'رقم الصفحة', 'نوع المحتوى', 'عدد الكلمات', 'عدد الأحرف',\n      'اللغة الأساسية', 'جودة الصفحة (%)', 'البريد الإلكتروني',\n      'أرقام الهاتف', 'التواريخ', 'الأرقام المهمة', 'الكلمات المفتاحية',\n      'ملخص المحتوى', 'النص الكامل', 'اسم الملف', 'تاريخ المعالجة',\n      'وقت المعالجة', 'معرف المعالجة'\n    ]\n  },\n  dataAnalysis: {\n    pagesWithContent: totalPages,\n    emptyPages: 0,\n    predominantLanguage: averageQuality > 70 ? 'جودة عالية' : averageQuality > 50 ? 'جودة متوسطة' : 'جودة منخفضة',\n    extractedEmails: Array.isArray(tableData) ? [...new Set(tableData.map(row => row['البريد الإلكتروني']).filter(e => e && e !== 'لا يوجد'))].length : 0,\n    extractedPhones: Array.isArray(tableData) ? [...new Set(tableData.map(row => row['أرقام الهاتف']).filter(p => p && p !== 'لا يوجد'))].length : 0\n  },\n  nextSteps: [\n    `افتح الجدول على: ${sheetResult.json.spreadsheetUrl}`,\n    'راجع البيانات المستخرجة في العمود \"النص الكامل\"',\n    'استخدم فلاتر الجدول لتصنيف البيانات',\n    'يمكنك تصدير البيانات لتطبيقات أخرى',\n    'استخدم البحث في الجدول للعثور على معلومات محددة'\n  ],\n  tips: [\n    'كل صف يمثل صفحة واحدة من PDF',\n    'الصف الأخير يحتوي على ملخص إجمالي',\n    'استخدم عمود \"نوع المحتوى\" لتصنيف الصفحات',\n    'عمود \"جودة الصفحة\" يوضح مدى نجاح استخراج النص'\n  ]\n};\n\nconsole.log('تم إكمال معالجة PDF بنجاح:', {\n  pages: totalPages,\n  words: totalWords,\n  sheetId: sheetResult.json.spreadsheetId\n});\n\nreturn finalReport;"
+      },
+      "id": "success-final-report",
+      "name": "Success Final Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1620, 240]
+    },
+    {
+      "parameters": {
+        "jsCode": "// معالجة خطأ إنشاء Google Sheet\nconst errorData = $input.first();\nconst tableData = $('prepare-table-rows').first().json;\nconst fileInfo = $('validate-pdf').first().json;\n\nconsole.log('خطأ في إنشاء Google Sheet:', errorData);\n\nconst errorReport = {\n  success: false,\n  error: 'فشل في إنشاء Google Sheet',\n  message: 'تم استخراج البيانات بنجاح لكن فشل في إنشاء الجدول',\n  extractedData: {\n    totalPages: Array.isArray(tableData) ? tableData.length - 1 : 0,\n    dataReady: true,\n    fileName: fileInfo.fileName,\n    processingId: fileInfo.processingId\n  },\n  availableData: tableData,\n  alternatives: [\n    'يمكنك نسخ البيانات من \"availableData\" وإنشاء جدول يدوياً',\n    'تحقق من أذونات Google Sheets API',\n    'جرب إعادة المحاولة لاحقاً',\n    'تأكد من اتصال الإنترنت',\n    'راجع إعدادات Google Drive'\n  ],\n  troubleshooting: [\n    'تحقق من صحة credentials',\n    'تأكد من تفعيل Google Sheets API',\n    'راجع حدود الاستخدام اليومية',\n    'جرب إنشاء جدول جديد يدوياً أولاً'\n  ],\n  timestamp: new Date().toISOString()\n};\n\nreturn errorReport;"
+      },
+      "id": "sheet-creation-error",
+      "name": "Sheet Creation Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1620, 360]
+    },
+    {
+      "parameters": {
+        "jsCode": "// معالجة الأخطاء العامة\nconst errorData = $input.first();\n\nlet errorMessage = 'حدث خطأ في معالجة PDF';\nlet errorType = 'GENERAL_ERROR';\nlet suggestions = [];\n\nif (errorData && errorData.error) {\n  errorMessage = errorData.error;\n  \n  if (errorMessage.includes('PDF')) {\n    errorType = 'PDF_ERROR';\n    suggestions = [\n      'تأكد من أن الملف PDF صالح وغير تالف',\n      'جرب ملف PDF آخر',\n      'تأكد من أن PDF غير محمي بكلمة مرور',\n      'اختر ملف أصغر حجماً (أقل من 100MB)'\n    ];\n  } else if (errorMessage.includes('حجم الملف')) {\n    errorType = 'FILE_SIZE_ERROR';\n    suggestions = [\n      'قم بضغط ملف PDF',\n      'قسم الملف إلى أجزاء أصغر',\n      'استخدم ملف أقل من 100MB'\n    ];\n  } else if (errorMessage.includes('صفحات')) {\n    errorType = 'PAGE_EXTRACTION_ERROR';\n    suggestions = [\n      'تأكد من أن PDF يحتوي على نص قابل للاستخراج',\n      'إذا كان PDF يحتوي على صور، استخدم OCR',\n      'جرب PDF من مصدر آخر'\n    ];\n  } else {\n    suggestions = [\n      'جرب إعادة رفع الملف',\n      'تحقق من اتصال الإنترنت',\n      'راجع تنسيق الملف',\n      'تواصل مع الدعم التقني'\n    ];\n  }\n}\n\nconsole.log(`خطأ في workflow: ${errorType} - ${errorMessage}`);\n\nreturn {\n  success: false,\n  errorType: errorType,\n  error: errorMessage,\n  suggestions: suggestions,\n  timestamp: new Date().toISOString(),\n  workflowStep: 'معالجة الملف',\n  nextActions: [\n    'راجع الخطأ والاقتراحات أعلاه',\n    'تأكد من صحة الملف والإعدادات',\n    'جرب مرة أخرى بملف مختلف'\n  ]\n};"
+      },
+      "id": "global-error-handler",
+      "name": "Global Error Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 500]
+    }
+  ],
+  "connections": {
+    "PDF Upload Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate PDF File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate PDF File": {
+      "main": [
+        [
+          {
+            "node": "Wait Before Extract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Global Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Before Extract": {
+      "main": [
+        [
+          {
+            "node": "PDF Extract Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF Extract Pages": {
+      "main": [
+        [
+          {
+            "node": "Prepare Table Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Global Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Table Rows": {
+      "main": [
+        [
+          {
+            "node": "Wait Before Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Global Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Before Sheets": {
+      "main": [
+        [
+          {
+            "node": "Create Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Google Sheet": {
+      "main": [
+        [
+          {
+            "node": "Check Sheet Creation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Sheet Creation Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Sheet Creation": {
+      "main": [
+        [
+          {
+            "node": "Success Final Report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sheet Creation Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "",
+    "timezone": "Asia/Kuwait",
+    "executionTimeout": 900,
+    "maxExecutionTime": 900000
+  },
+  "staticData": {},
+  "tags": [
+    {
+      "createdAt": "2025-07-09T12:00:00.000Z",
+      "updatedAt": "2025-07-09T12:00:00.000Z",
+      "id": "multi-page-pdf",
+      "name": "PDF متعدد الصفحات"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2025-07-09T12:00:00.000Z",
+  "versionId": "2"
+}
