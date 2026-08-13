@@ -1,0 +1,471 @@
+{
+  "name": "My workflow 9 - Fixed Loop",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Get workflow context - Counter Node\nconst inputData = $input.all();\nlet currentNumber = 1;\n\n// Check if we have input from a loop\nif (inputData.length > 0 && inputData[0].json.number) {\n  currentNumber = inputData[0].json.number;\n}\n\nconsole.log(`Processing PDF number: ${currentNumber}`);\n\nreturn [{\n  json: {\n    number: currentNumber\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        60
+      ],
+      "id": "d93d326d-2f99-4522-af7e-92976c1978ee",
+      "name": "Counter Node"
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "https://api.ocr.space/parse/image",
+        "allowUnauthorizedCerts": true,
+        "options": {
+          "bodyContentType": "multipart-form-data"
+        },
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "url",
+              "value": "=http://cr.skyaierp.com/{{$json.number}}-1.pdf"
+            },
+            {
+              "name": "language",
+              "value": "ara"
+            },
+            {
+              "name": "filetype",
+              "value": "PDF"
+            },
+            {
+              "name": "scale",
+              "value": "true"
+            }
+          ]
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "apikey",
+              "value": "K85451329588957"
+            }
+          ]
+        }
+      },
+      "name": "OCR.space API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        580,
+        60
+      ],
+      "id": "3eb1e0f2-5213-4c21-8358-74489bc0af2f"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ocrResult = $('OCR.space API').first().json;\n\nif (!ocrResult.ParsedResults || ocrResult.ParsedResults.length === 0) {\n  return {\n    json: {\n      error: true,\n      message: 'No ParsedResults returned from OCR.'\n    }\n  };\n}\n\n// 1. دمج النصوص من كل صفحات OCR\nlet fullText = ocrResult.ParsedResults\n  .map(p => p.ParsedText || '')\n  .join('\\n\\n');\n\n// 2. تنظيف النص\nconst cleanedText = fullText\n  .replace(/\\r\\n/g, '\\n')\n  .replace(/[ \\t]{2,}/g, ' ')        // حذف المسافات الزائدة\n  .replace(/\\n\\s*\\n/g, '\\n\\n')       // حذف الأسطر الفارغة المتكررة\n  .trim();\n\n// 3. تقسيم النص إلى أجزاء صغيرة (4000 حرف كحد أقصى للذكاء الاصطناعي)\nconst chunkSize = 4000;\nconst chunks = [];\n\nfor (let i = 0; i < cleanedText.length; i += chunkSize) {\n  chunks.push(cleanedText.slice(i, i + chunkSize));\n}\n\n// 4. إرجاع الناتج\nreturn {\n  json: {\n    ocrExitCode: ocrResult.OCRExitCode,\n    processingTime: ocrResult.ProcessingTimeInMilliseconds,\n    originalText: fullText,\n    cleanedText: cleanedText,\n    textChunks: chunks\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        60
+      ],
+      "id": "584d709d-ad0f-4ea8-b9c4-6abba8a9c365",
+      "name": "Clean code"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Extract the following fields from the provided Arabic text chunk and return them in a flat JSON object. Do not include any nested arrays or objects. Join multiple values in arrays using \" | \" for inner values and \";\" for separating entries. Ensure all fields appear in the output, even if their values are empty. All values must be strings or numbers only.\n\nFields to extract:\n\nID_الوثيقة\n\nنوع_الوثيقة\n\nالمصدر\n\nالتاريخ\n\nالمرخص_له\n\nالجهة_المانحة (in format: \"الإدارة المختصة- [اسم الإدارة] : [المحافظة]\")\n\nرقم_الشاليه\n\nالمنطقة_او_العنوان_التفصيلي (concatenate all related address fields separated by \" ; \")\n\nإجمالي_المساحة\n\nالمساحة_المكشوفة\n\nالمساحة_المسقوفة\n\nإجمالي_المساحة_المكشوفة_في_الأرض_الأصلية\n\nالتفاصيل_المالية (format: بند | قيمة | عملة)\n\nالمواصفات_التقنية (format: بند | قيمة | وحدة)\n\nالشروط_القانونية_الهامة (joined by semicolon)\n\nتحذيرات_ومخاطر (joined by semicolon)\n\nنقاط_الخلاصة_التنفيذية (joined by semicolon)\n\n\n\nReturn ONLY the JSON object. It must start with \"{\" and end with \"}\". Do not include any explanation, notes, or extra text.\n\nInput text:\n{{ $json.textChunks }} and  also add to data \n\"jsonnumber:\" {{ $('Counter Node').item.json.number }} \n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [
+        1020,
+        60
+      ],
+      "id": "8bee7cf8-d149-46ad-8f69-0c157ba5b256",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-3-7-sonnet-20250219",
+          "cachedResultName": "Claude 3.7 Sonnet"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        1040,
+        -100
+      ],
+      "id": "8e6fb48e-93b8-4b52-9cb0-98bef3cf601b",
+      "name": "Anthropic Chat Model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "m7HdyqS94kNsRniJ",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "let outputStr = $input.first().json.output;\n\n// استخراج أول كود JSON - البحث عن object بدلاً من array\nlet jsonMatch = outputStr.match(/({[\\s\\S]*})/);\n\nif (!jsonMatch) {\n  throw new Error(\"No valid JSON found in the input!\");\n}\n\nlet jsonStr = jsonMatch[1];\n\n// تنفيذ الـ parse\nlet data = JSON.parse(jsonStr);\n\nreturn [{ json: data }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        60
+      ],
+      "id": "b0dc4d9d-33ad-4f12-886a-3ca37fdf5115",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1YGRZ2vZBQKggEVJxHxgUWulj56UUbkOmhI66FA7k0lo",
+          "mode": "list",
+          "cachedResultName": "extractdata",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YGRZ2vZBQKggEVJxHxgUWulj56UUbkOmhI66FA7k0lo/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1348648184,
+          "mode": "list",
+          "cachedResultName": "Sheet2",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YGRZ2vZBQKggEVJxHxgUWulj56UUbkOmhI66FA7k0lo/edit#gid=1348648184"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ID_الوثيقة": "={{ $json[\"ID_الوثيقة\"] }}",
+            "التاريخ": "={{ $json[\"التاريخ\"] }}",
+            "نوع_الوثيقة": "={{ $json[\"نوع_الوثيقة\"] }}",
+            "المصدر": "={{ $json[\"المصدر\"] }}",
+            "المرخص_له": "={{ $json[\"المرخص_له\"] }}",
+            "الجهة_المانحة": "={{ $json[\"الجهة_المانحة\"] }}",
+            "التفاصيل_المالية": "={{ $json[\"المنطقة_او_العنوان_التفصيلي\"] }}",
+            "المواصفات_التقنية": "={{ $json[\"نقاط_الخلاصة_التنفيذية\"] }}",
+            "numberprameter": "={{ $json.jsonnumber }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "numberprameter",
+              "displayName": "numberprameter",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ID_الوثيقة",
+              "displayName": "ID_الوثيقة",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "نوع_الوثيقة",
+              "displayName": "نوع_الوثيقة",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "المصدر",
+              "displayName": "المصدر",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "التاريخ",
+              "displayName": "التاريخ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "المرخص_له",
+              "displayName": "المرخص_له",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "الجهة_المانحة",
+              "displayName": "الجهة_المانحة",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "التفاصيل_المالية",
+              "displayName": "التفاصيل_المالية",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "المواصفات_التقنية",
+              "displayName": "المواصفات_التقنية",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "useAppend": false
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1460,
+        60
+      ],
+      "id": "3d882ffd-a620-4263-ab1a-399e26703cc8",
+      "name": "Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ZhKYwN0Ynm2Z5KYd",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get current number from Counter Node\nlet current = $('Counter Node').first().json.number;\n\nconsole.log(`Finished processing number: ${current}`);\n\n// Check if done\nif (current >= 9) {\n  console.log('All PDFs processed!');\n  return [{\n    json: {\n      finished: true,\n      message: `Completed processing PDFs 1-${current}`,\n      totalProcessed: current\n    }\n  }];\n}\n\n// Continue with next number\nlet next = current + 1;\nconsole.log(`Next PDF to process: ${next}`);\n\nreturn [{\n  json: {\n    number: next,\n    continue: true,\n    currentlyProcessed: current\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        60
+      ],
+      "id": "7c25e235-6818-4048-a15e-7d99d6978622",
+      "name": "Loop Check"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "551a8961-7cac-4f27-922e-841e1f5f3f79",
+              "leftValue": "={{ $json.continue }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1900,
+        60
+      ],
+      "id": "0c9bcd02-b04e-44db-8e10-a8379aa0aff8",
+      "name": "Should Continue?"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        140,
+        60
+      ],
+      "id": "76713aab-6aad-43b1-8bea-f2a74dcc5efa",
+      "name": "When clicking 'Test workflow'"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the incremented number from Loop Check\nlet nextNumber = $('Loop Check').first().json.number;\n\nconsole.log(`Looping back with number: ${nextNumber}`);\n\n// Return the number to feed back to Counter Node\nreturn [{\n  json: {\n    number: nextNumber\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        220
+      ],
+      "id": "6ad9bab6-c07c-4943-bd55-3b702ca127ce",
+      "name": "Loop Back"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Counter Node": {
+      "main": [
+        [
+          {
+            "node": "OCR.space API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OCR.space API": {
+      "main": [
+        [
+          {
+            "node": "Clean code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean code": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Loop Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Check": {
+      "main": [
+        [
+          {
+            "node": "Should Continue?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Continue?": {
+      "main": [
+        [
+          {
+            "node": "Loop Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking 'Test workflow'": {
+      "main": [
+        [
+          {
+            "node": "Counter Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Back": {
+      "main": [
+        [
+          {
+            "node": "Counter Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "770f5a47-67b7-4201-bacf-678ea5432ec9",
+  "meta": {
+    "instanceId": "7885bc8573d26fb092bff1a2b27f735e8286878f164c5891dfb3f6e23c9b3cfa"
+  },
+  "id": "IObPB3yDal5kaFk0",
+  "tags": []
+}
